@@ -1,3 +1,10 @@
 # Auto detect text files and perform LF normalization
-* text=auto
+* text=auto eol=lf
 *.sh eol=lf
+*.md eol=lf
+*.yml eol=lf
+*.yaml eol=lf
+*.env eol=lf
+Dockerfile eol=lf
+Makefile eol=lf
+.gitignore eol=lf

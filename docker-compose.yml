@@ -101,6 +101,10 @@ services:
   # guacd
   guacd:
     container_name: guacd_compose
+    # Ensure containers can resolve the Docker host using a stable name.
+    # host-gateway maps to the host gateway (works on modern Docker engines and WSL2).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     image: guacamole/guacd:1.6.0
     networks:
       - guacnetwork_compose
@@ -127,6 +131,9 @@ services:
   # guacamole
   guacamole:
     container_name: guacamole_compose
+    # Ensure guacamole container can reach the Docker host as `host.docker.internal`.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     group_add:
       - "1000"
     depends_on:
@@ -150,6 +157,22 @@ services:
 ## enable next line when using nginx
     - "8081:8080/tcp" # 8081 on the VM -> 8080 inside the container
     restart: always
+
+  # vnc-desktop
+  vnc-desktop:
+    build: .
+    container_name: guac_vnc_desktop
+    environment:
+      - VNC_PASSWORD=changeme            # changez avant usage
+      - VNC_USER=guac
+      - GEOMETRY=1920x1080
+      - DEPTH=24
+    ports:
+      - "5901:5901"   # VNC
+      - "6901:6901"   # noVNC web client
+    volumes:
+      - ./data/vnc:/home/guac/.vnc
+    restart: unless-stopped
 
 ########### optional ##############
   # nginx

@@ -34,7 +34,6 @@ help:
 	@echo "  make status       -> Liste les conteneurs actifs"
 	@echo "  make connect      -> Affiche l’URL Guacamole et info SSH"
 	@echo "  make ssh          -> Se connecte à la VM en SSH"
-	@echo "  make vnc          -> Teste la connexion VNC directe"
 	@echo "  make env          -> Affiche les variables d’environnement chargées"
 	@echo "================================================"
 	@echo ""
@@ -73,41 +72,12 @@ ssh:
 	@echo "🔑 Connexion SSH à la VM $(VM_IP) sur le port $(SSH_PORT)..."
 	@ssh radandri@$(VM_IP) -p $(SSH_PORT)
 
-setup-vnc:
-	@echo "🚀 Installation de VNC Server et XFCE dans la VM ..."
-	sudo apt update -y
-	sudo apt install -y tightvncserver xfce4 xfce4-goodies dbus-x11
-	@echo "✅ Installation terminée."
-	@echo "🔧 Configuration du fichier xstartup..."
-	mkdir -p ~/.vnc
-	echo '#!/bin/bash' > ~/.vnc/xstartup
-	echo 'xrdb "$$HOME/.Xresources"' >> ~/.vnc/xstartup
-	@echo 'unset SESSION_MANAGER' >> ~/.vnc/xstartup
-	@echo 'unset DBUS_SESSION_BUS_ADDRESS' >> ~/.vnc/xstartup
-	echo 'startxfce4 &' >> ~/.vnc/xstartup
-	chmod +x ~/.vnc/xstartup
-	@echo "✅ Fichier ~/.vnc/xstartup créé."
-	@echo "💡 Lance le serveur avec : make start-vnc"
-	@echo "🔒 Mise en place du mot de passe VNC..."
-	echo "$(VNC_PASS)" | vncpasswd -f > ~/.vnc/passwd
-	chmod 600 ~/.vnc/passwd
-
-status-vnc:
-	ss -tlnp | grep $(VNC_PORT)
-	@echo "📄 Pour suivre les logs du VNC : tail -f ~/.vnc/$$HOSTNAME:1.log"
-	tail -f ~/.vnc/radandri42:1.log
-
-restart-vnc:
-	@echo "🛑 Kill ancien serveur VNC si présent..."
-	vncserver -kill :1 2>/dev/null || true
-	vncserver :1 -geometry 1920x1080 -depth 24
-
 connect:
 	@echo ""
 	@echo "================== 🌍 INFORMATIONS =================="
 	@echo "Guacamole :   http://$(HOST_IP):$(GUAC_PORT)/guacamole"
 	@echo "VM SSH :      ssh radandri@$(VM_IP) -p $(SSH_PORT)"
-	@echo "VNC :         $(VM_IP):$(VNC_PORT)"
+	@echo "VNC (docker): $(HOST_IP):$(VNC_PORT)"
 	@echo "====================================================="
 	@echo ""
 
@@ -144,14 +114,9 @@ clean-docker:
 	docker stop $(docker ps -aq) 2>/dev/null
 	docker rm -f $(docker ps -aq) 2>/dev/null
 
+# Update Guacamole DB to use host.docker.internal for hostname
+set-guac-host:
+	@echo "Setting guacamole connection hostname to host.docker.internal in DB..."
+	@docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c "UPDATE guacamole_connection_parameter SET parameter_value=\host.docker.internal WHERE parameter_name=\hostname AND parameter_value=\127.0.0.1;" || true
+	@echo "Done. Restart guacd/guacamole if needed: make restart"
 
-optimize-vm:
-	@echo "🚀 Nettoyage de la VM (désactivation interface graphique)..."
-	sudo systemctl disable lightdm || true
-	sudo systemctl set-default multi-user.target
-	sudo apt purge -y gdm3 lightdm gnome-shell gnome-session* xorg* --auto-remove || true
-	sudo apt autoremove -y
-	sudo apt autoclean
-	@echo "✅ Interface graphique désactivée et VM optimisée."
-
-.PHONY: help install-guacamole up down restart status ssh setup-vnc status-vnc restart-vnc connect env update-env run clean-docker optimize-vm

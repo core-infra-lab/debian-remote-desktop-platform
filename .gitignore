@@ -1,0 +1,29 @@
+# Environment and editor
+.env
+.env.*
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Python/bytecode
+__pycache__/
+*.pyc
+
+# Docker volumes and runtime data
+/data/
+/drive/
+/record/
+
+# VNC runtime data
+/data/vnc/
+
+# Generated DB init and certs
+/init/initdb.sql
+/nginx/ssl/self.cert
+/nginx/ssl/self-ssl.key
+
+# Logs and pid files
+*.log
+*.pid
