@@ -117,9 +117,9 @@ services:
     container_name: postgres_guacamole_compose
     environment:
       PGDATA: /var/lib/postgresql/data/guacamole
-      POSTGRES_DB: guacamole_db
-      POSTGRES_PASSWORD: 'ChooseYourOwnPasswordHere1234'
-      POSTGRES_USER: guacamole_user
+      POSTGRES_DB: ${POSTGRES_DB:-guacamole_db}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_USER: ${POSTGRES_USER:-guacamole_user}
     image: postgres:15.2-alpine
     networks:
       - guacnetwork_compose
@@ -141,10 +141,10 @@ services:
     - postgres
     environment:
       GUACD_HOSTNAME: guacd
-      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_DATABASE: ${POSTGRES_DB:-guacamole_db}
       POSTGRESQL_HOSTNAME: postgres
-      POSTGRESQL_PASSWORD: 'ChooseYourOwnPasswordHere1234'
-      POSTGRESQL_USERNAME: guacamole_user
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRESQL_USERNAME: ${POSTGRES_USER:-guacamole_user}
       RECORDING_SEARCH_PATH: /record
     image: guacamole/guacamole:1.6.0
     networks:
@@ -162,16 +162,18 @@ services:
   vnc-desktop:
     build: .
     container_name: guac_vnc_desktop
+    networks:
+      - guacnetwork_compose
     environment:
-      - VNC_PASSWORD=changeme            # changez avant usage
-      - VNC_USER=guac
-      - GEOMETRY=1920x1080
-      - DEPTH=24
+      VNC_PASSWORD: ${VNC_PASSWORD:?Set VNC_PASSWORD in .env}
+      VNC_USER: ${VNC_USER:-guac}
+      GEOMETRY: ${GEOMETRY:-1920x1080}
+      DEPTH: ${DEPTH:-24}
     ports:
       - "5901:5901"   # VNC
       - "6901:6901"   # noVNC web client
     volumes:
-      - ./data/vnc:/home/guac/.vnc
+      - ./data/vnc:/home/${VNC_USER:-guac}/.vnc
     restart: unless-stopped
 
 ########### optional ##############

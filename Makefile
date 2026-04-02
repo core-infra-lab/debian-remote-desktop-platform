@@ -18,7 +18,14 @@ VNC_PORT ?= 5901
 GUAC_PORT ?= 8081
 SSH_PORT ?= 4242
 VM_USER = radandri
-VNC_PASS = radandri
+CONNECTION_NAME ?= New VNC Connection
+CONNECTION_HOST ?= vnc-desktop
+CONNECTION_PORT ?= 5901
+CONNECTION_PASSWORD ?= $(VNC_PASSWORD)
+CONNECTION_PROTOCOL ?= vnc
+CONNECTION_CLIPBOARD_ENCODING ?= UTF-8
+CONNECTION_COLOR_DEPTH ?= 24
+GUAC_ADMIN_ENTITY_ID ?= 1
 
 # ================================
 # ⚙️ COMMANDES PRINCIPALES
@@ -34,6 +41,7 @@ help:
 	@echo "  make status       -> Liste les conteneurs actifs"
 	@echo "  make connect      -> Affiche l’URL Guacamole et info SSH"
 	@echo "  make ssh          -> Se connecte à la VM en SSH"
+	@echo "  make add-connection -> Crée ou met à jour une connexion Guacamole VNC"
 	@echo "  make env          -> Affiche les variables d’environnement chargées"
 	@echo "================================================"
 	@echo ""
@@ -70,13 +78,13 @@ status:
 
 ssh:
 	@echo "🔑 Connexion SSH à la VM $(VM_IP) sur le port $(SSH_PORT)..."
-	@ssh radandri@$(VM_IP) -p $(SSH_PORT)
+	@ssh $(VM_USER)@$(VM_IP) -p $(SSH_PORT)
 
 connect:
 	@echo ""
 	@echo "================== 🌍 INFORMATIONS =================="
 	@echo "Guacamole :   http://$(HOST_IP):$(GUAC_PORT)/guacamole"
-	@echo "VM SSH :      ssh radandri@$(VM_IP) -p $(SSH_PORT)"
+	@echo "VM SSH :      ssh $(VM_USER)@$(VM_IP) -p $(SSH_PORT)"
 	@echo "VNC (docker): $(HOST_IP):$(VNC_PORT)"
 	@echo "====================================================="
 	@echo ""
@@ -117,6 +125,23 @@ clean-docker:
 # Update Guacamole DB to use host.docker.internal for hostname
 set-guac-host:
 	@echo "Setting guacamole connection hostname to host.docker.internal in DB..."
-	@docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c "UPDATE guacamole_connection_parameter SET parameter_value=\host.docker.internal WHERE parameter_name=\hostname AND parameter_value=\127.0.0.1;" || true
+	@docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c "UPDATE guacamole_connection_parameter SET parameter_value='host.docker.internal' WHERE parameter_name='hostname' AND parameter_value='127.0.0.1';" || true
 	@echo "Done. Restart guacd/guacamole if needed: make restart"
+
+add-connection:
+	@if [ -z "$(strip $(CONNECTION_NAME))" ] || [ -z "$(strip $(CONNECTION_HOST))" ] || [ -z "$(strip $(CONNECTION_PORT))" ] || [ -z "$(strip $(CONNECTION_PASSWORD))" ]; then echo "CONNECTION_NAME, CONNECTION_HOST, CONNECTION_PORT and CONNECTION_PASSWORD must be set"; exit 1; fi
+	@echo "Creating/updating Guacamole connection: $(CONNECTION_NAME)"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	CONN_HOST='$(CONNECTION_HOST)'; \
+	CONN_PORT='$(CONNECTION_PORT)'; \
+	CONN_PASSWORD='$(CONNECTION_PASSWORD)'; \
+	CONN_PROTOCOL='$(CONNECTION_PROTOCOL)'; \
+	CONN_CLIPBOARD='$(CONNECTION_CLIPBOARD_ENCODING)'; \
+	CONN_DEPTH='$(CONNECTION_COLOR_DEPTH)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"WITH conn AS (INSERT INTO guacamole_connection (connection_name, protocol, parent_id) VALUES ('$$CONN_NAME', '$$CONN_PROTOCOL', NULL) ON CONFLICT (connection_name, parent_id) DO UPDATE SET protocol = EXCLUDED.protocol RETURNING connection_id) INSERT INTO guacamole_connection_parameter (connection_id, parameter_name, parameter_value) SELECT conn.connection_id, params.parameter_name, params.parameter_value FROM conn CROSS JOIN (VALUES ('hostname', '$$CONN_HOST'), ('port', '$$CONN_PORT'), ('password', '$$CONN_PASSWORD'), ('clipboard-encoding', '$$CONN_CLIPBOARD'), ('color-depth', '$$CONN_DEPTH')) AS params(parameter_name, parameter_value) ON CONFLICT (connection_id, parameter_name) DO UPDATE SET parameter_value = EXCLUDED.parameter_value;"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission) SELECT $(GUAC_ADMIN_ENTITY_ID), c.connection_id, perm::guacamole_object_permission_type FROM guacamole_connection c CROSS JOIN (VALUES ('READ'),('UPDATE'),('DELETE'),('ADMINISTER')) AS p(perm) WHERE c.connection_name = '$$CONN_NAME' ON CONFLICT DO NOTHING;"
+	@echo "Done. Open Guacamole, refresh the page (Ctrl+F5), then select '$(CONNECTION_NAME)'."
 

@@ -1,6 +1,7 @@
 # Environment and editor
 .env
 .env.*
+!.env.example
 .vscode/
 .idea/
 *.swp

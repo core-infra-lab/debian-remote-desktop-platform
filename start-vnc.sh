@@ -3,41 +3,60 @@ set -euo pipefail
 
 # Basic configuration with sensible defaults
 VNC_USER="${VNC_USER:-vncuser}"
-VNC_PASSWORD="${VNC_PASSWORD:-changeme}"
+VNC_PASSWORD="${VNC_PASSWORD:-}"
 GEOMETRY="${GEOMETRY:-1920x1080}"
 DEPTH="${DEPTH:-24}"
 VNC_DISPLAY=":1"
 VNC_PORT="${VNC_PORT:-5901}"
 NOVNC_PORT="${NOVNC_PORT:-6901}"
 
+require_env() {
+  if [ -z "${VNC_PASSWORD}" ]; then
+    echo "VNC_PASSWORD must be set and non-empty." >&2
+    exit 1
+  fi
+}
+
 create_user() {
   if ! id "${VNC_USER}" >/dev/null 2>&1; then
     useradd -m -s /bin/bash "${VNC_USER}"
   fi
+
+  # Bind mounts can create root-owned files; ensure user can manage its home.
+  chown -R "${VNC_USER}:${VNC_USER}" "/home/${VNC_USER}"
 }
 
 configure_vnc_password() {
-  sudo -u "${VNC_USER}" mkdir -p "/home/${VNC_USER}/.vnc"
-  echo "${VNC_PASSWORD}" | vncpasswd -f | sudo -u "${VNC_USER}" tee "/home/${VNC_USER}/.vnc/passwd" >/dev/null
+  mkdir -p "/home/${VNC_USER}/.vnc"
+  chown -R "${VNC_USER}:${VNC_USER}" "/home/${VNC_USER}/.vnc"
+  echo "${VNC_PASSWORD}" | sudo -u "${VNC_USER}" vncpasswd -f > "/home/${VNC_USER}/.vnc/passwd"
+  chown "${VNC_USER}:${VNC_USER}" "/home/${VNC_USER}/.vnc/passwd"
   chmod 600 "/home/${VNC_USER}/.vnc/passwd"
 }
 
 configure_xstartup() {
   local xstartup="/home/${VNC_USER}/.vnc/xstartup"
-  if [ ! -f "${xstartup}" ]; then
-    cat >"${xstartup}" <<'EOF'
+  cat >"${xstartup}" <<'EOF'
 #!/bin/sh
+unset WAYLAND_DISPLAY
+unset XDG_RUNTIME_DIR
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
-startxfce4 &
+if command -v dbus-launch >/dev/null 2>&1; then
+  exec dbus-launch --exit-with-session startxfce4
+else
+  exec startxfce4
+fi
 EOF
-    chmod +x "${xstartup}"
-  fi
+
+  chmod +x "${xstartup}"
+  chown "${VNC_USER}:${VNC_USER}" "${xstartup}"
 }
 
 start_vnc() {
+  rm -f "/home/${VNC_USER}/.Xauthority-c" "/home/${VNC_USER}/.Xauthority-l"
   sudo -u "${VNC_USER}" vncserver -kill "${VNC_DISPLAY}" >/dev/null 2>&1 || true
-  sudo -u "${VNC_USER}" VNC_PORT="${VNC_PORT}" vncserver "${VNC_DISPLAY}" -geometry "${GEOMETRY}" -depth "${DEPTH}"
+  sudo -u "${VNC_USER}" VNC_PORT="${VNC_PORT}" vncserver "${VNC_DISPLAY}" -geometry "${GEOMETRY}" -depth "${DEPTH}" -SecurityTypes VncAuth -localhost no
 }
 
 start_novnc() {
@@ -54,6 +73,7 @@ stop_vnc() {
 
 main() {
   trap stop_vnc EXIT
+  require_env
   create_user
   configure_vnc_password
   configure_xstartup

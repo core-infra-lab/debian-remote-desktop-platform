@@ -8,10 +8,16 @@ This repo runs Apache Guacamole, guacd, Postgres, and an XFCE VNC desktop fully 
 
 ## Quick start
 ```bash
+cp .env.example .env
+# edit .env and set strong values for POSTGRES_PASSWORD and VNC_PASSWORD
 ./prepare.sh           # generates initdb.sql + self-signed TLS certs
 docker compose up -d   # or: make up
 ```
 Then open: `http://<HOST_IP>:8081/guacamole` (default login: guacadmin / guacadmin).
+
+Required secrets now come from environment variables (`.env`):
+- `POSTGRES_PASSWORD`
+- `VNC_PASSWORD`
 
 ## Services and ports
 - guacamole (web UI): 8081 -> 8080 in container
@@ -24,7 +30,7 @@ Then open: `http://<HOST_IP>:8081/guacamole` (default login: guacadmin / guacadm
 ## VNC container config
 Environment variables on service `vnc-desktop` (see docker-compose.yml):
 - VNC_USER (default: guac)
-- VNC_PASSWORD (change before use)
+- VNC_PASSWORD (required)
 - GEOMETRY (e.g. 1920x1080)
 - DEPTH (e.g. 24)
 
@@ -40,8 +46,20 @@ docker compose build vnc-desktop
 - make up / down / restart / status
 - make connect (shows URL/ports)
 - make ssh (if you still use an SSH-accessible VM)
+- make add-connection (creates or updates a Guacamole VNC connection)
 - make env (print loaded variables)
 - make clean-docker (reset + prune)
+
+Connection guide: see [docs/guacamole-connection-manual.md](docs/guacamole-connection-manual.md).
+File sharing guide: see [docs/files-host-container.md](docs/files-host-container.md).
+
+### Host vs Container
+```text
+Host (radandri)                 Container (guac)
+./drive   -------------------->  /drive
+./record  <--------------------  /record
+./data/vnc --------------------> /home/guac/.vnc
+```
 
 Host-side VNC install targets were removed because VNC now runs in the container.
 
