@@ -27,6 +27,24 @@ Required secrets now come from environment variables (`.env`):
   - VNC: 5901
   - noVNC: 6901 (websockify serving /usr/share/novnc)
 
+## Ports to open
+Open only what is needed for the target you want to reach.
+
+| Use case | Ports to open | Notes |
+| --- | --- | --- |
+| Guacamole web UI on the Docker host | `8081/tcp` | Use `443/tcp` instead if you put Guacamole behind an HTTPS reverse proxy. |
+| Local VNC desktop in this repo | `5901/tcp` on the `vnc-desktop` container | Already exposed by Docker Compose; nothing extra to open on the host if you access Guacamole locally. |
+| Remote VM with VNC | `5901/tcp` on the VM | Restrict source access to the Guacamole host or private network when possible. |
+| Remote VM with SSH | `22/tcp` on the VM | Only if you also use SSH. |
+| Remote VM with RDP | `3389/tcp` on the VM | Use this instead of VNC when the target is Windows or an RDP server. |
+| EC2 VNC instance | `5901/tcp` on the security group | Prefer allowing only the Guacamole host IP, not `0.0.0.0/0`. |
+| EC2 SSH access | `22/tcp` on the security group | Same rule: limit to your admin IP or VPN. |
+
+Rule of thumb:
+- Guacamole needs access to the target service port from the Guacamole host or Docker network.
+- The VNC or RDP port should not be public unless you really need it.
+- Docker internal services like `guacd` and PostgreSQL stay private; you do not open extra ports for them.
+
 ## VNC container config
 Environment variables on service `vnc-desktop` (see docker-compose.yml):
 - VNC_USER (default: guac)
