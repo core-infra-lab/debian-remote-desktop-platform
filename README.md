@@ -19,6 +19,11 @@ Required secrets now come from environment variables (`.env`):
 - `POSTGRES_PASSWORD`
 - `VNC_PASSWORD`
 
+`./prepare.sh` also creates the shared folders and fixes their permissions:
+- `./drive`
+- `./record`
+- `./data/vnc`
+
 ## Services and ports
 - guacamole (web UI): 8081 -> 8080 in container
 - guacd: internal only

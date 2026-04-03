@@ -8,6 +8,7 @@ then
 fi
 echo "Preparing folder init and creating ./init/initdb.sql"
 mkdir ./init >/dev/null 2>&1
+mkdir -p ./drive >/dev/null 2>&1
 mkdir -p ./nginx/ssl >/dev/null 2>&1
 chmod -R +x ./init
 # latest
@@ -15,9 +16,12 @@ chmod -R +x ./init
 # pinned version
 docker run --rm 'guacamole/guacamole:1.6.0' /opt/guacamole/bin/initdb.sh --postgresql > ./init/initdb.sql
 echo "done"
-echo "Preparing folder record and set permissions"
-mkdir ./record >/dev/null 2>&1
-chmod -R 777 ./record
+echo "Preparing shared folders and set permissions"
+mkdir -p ./record ./data/vnc >/dev/null 2>&1
+if command -v sudo >/dev/null 2>&1; then
+	sudo chown -R "$(id -u)":"$(id -g)" ./drive ./record ./data/vnc >/dev/null 2>&1 || true
+fi
+chmod -R 775 ./drive ./record ./data/vnc
 echo "done"
 echo "Creating SSL certificates"
 openssl req -nodes -newkey rsa:2048 -new -x509 -keyout nginx/ssl/self-ssl.key -out nginx/ssl/self.cert -subj '/C=DE/ST=BY/L=Hintertupfing/O=Dorfwirt/OU=Theke/CN=www.createyourown.domain/emailAddress=docker@createyourown.domain'

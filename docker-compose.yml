@@ -169,10 +169,14 @@ services:
       VNC_USER: ${VNC_USER:-guac}
       GEOMETRY: ${GEOMETRY:-1920x1080}
       DEPTH: ${DEPTH:-24}
+      AUTO_INSTALL_DEBS: ${AUTO_INSTALL_DEBS:-false}
+      ROOT_PASSWORD: ${ROOT_PASSWORD:-}
     ports:
       - "5901:5901"   # VNC
       - "6901:6901"   # noVNC web client
     volumes:
+      - ./drive:/drive:rw
+      - ./record:/record:rw
       - ./data/vnc:/home/${VNC_USER:-guac}/.vnc
     restart: unless-stopped
 
