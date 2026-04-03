@@ -62,6 +62,10 @@ up:
 	@echo "🧩 Utilisateur par défaut : guacadmin / guacadmin"
 	@echo ""
 
+re:
+	docker compose build vnc-desktop
+	docker compose up -d --force-recreate vnc-desktop
+
 down:
 	@echo "🛑 Arrêt et suppression des conteneurs..."
 	docker compose down
