@@ -15,6 +15,7 @@ HOST_VNC_DEPTH="${HOST_VNC_DEPTH:-24}"
 HOST_VNC_PORT="${HOST_VNC_PORT:-5901}"
 HOST_VNC_PASSWORD="${HOST_VNC_PASSWORD:-}"
 HOST_VNC_USER="${HOST_VNC_USER:-${USER}}"
+HOST_VNC_BACKEND="${HOST_VNC_BACKEND:-auto}"
 
 normalize_display() {
   if [[ "${HOST_VNC_DISPLAY}" != :* ]]; then
@@ -56,6 +57,13 @@ Environment variables (optional):
   HOST_VNC_DEPTH     (default: 24)
   HOST_VNC_PORT      (default: 5901)
   HOST_VNC_PASSWORD  (optional; if set, writes ~/.vnc/passwd)
+  HOST_VNC_BACKEND   (auto|tigervnc|tightvnc, default: auto)
+
+Notes:
+  - auto tries TigerVNC first, then falls back to TightVNC if the host
+    cannot start a TigerVNC session cleanly.
+  - tightvnc is useful on constrained hosts where TigerVNC cannot create
+    the expected X11 sockets.
 EOF
 }
 
@@ -111,16 +119,31 @@ configure_password() {
 
 setup_host() {
   echo "Installing host VNC dependencies..."
-  # Avoid debconf prompts (notably display manager selection) on fresh hosts.
-  if command -v debconf-set-selections >/dev/null 2>&1; then
-    printf 'lightdm shared/default-x-display-manager select lightdm\n' | sudo debconf-set-selections || true
-  fi
   sudo DEBIAN_FRONTEND=noninteractive apt update -y
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y \
-    tightvncserver xfce4 xfce4-goodies dbus-x11 x11-xserver-utils
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+    tigervnc-standalone-server \
+    tigervnc-tools \
+    tightvncserver \
+    xfce4 \
+    xfce4-terminal \
+    dbus-x11 \
+    x11-xserver-utils \
+    xfonts-base \
+    xfonts-75dpi \
+    adwaita-icon-theme \
+    hicolor-icon-theme \
+    tango-icon-theme \
+    librsvg2-common \
+    fonts-dejavu \
+    fonts-noto-core \
+    fonts-noto-color-emoji \
+    thunar-volman \
+    tumbler \
+    xterm
   if ! id "${HOST_VNC_USER}" >/dev/null 2>&1; then
     sudo useradd -m -s /bin/bash "${HOST_VNC_USER}"
   fi
+  sudo -u "${HOST_VNC_USER}" mkdir -p "$(getent passwd "${HOST_VNC_USER}" | cut -d: -f6)/.config"
   write_xstartup
   configure_password
   echo "Host VNC setup complete for user ${HOST_VNC_USER}."
@@ -128,18 +151,28 @@ setup_host() {
 
 stop_vnc() {
   run_as_vnc_user vncserver -kill "${HOST_VNC_DISPLAY}" >/dev/null 2>&1 || true
+  sudo pkill -u "${HOST_VNC_USER}" -f 'Xtigervnc|Xtightvnc|Xvnc|vncserver' >/dev/null 2>&1 || true
   sudo pkill -u "${HOST_VNC_USER}" -f 'xfce4-session|xfwm4|xfdesktop|xfsettingsd|xfce4-panel|Thunar|wrapper-2.0|light-locker|nm-applet|xiccd|gvfsd' >/dev/null 2>&1 || true
   echo "Stopped VNC display ${HOST_VNC_DISPLAY} (if it was running)."
 }
 
 start_vnc() {
   stop_vnc
+  sudo mkdir -p /tmp/.X11-unix
+  sudo chmod 1777 /tmp/.X11-unix >/dev/null 2>&1 || echo "Warning: cannot chmod /tmp/.X11-unix (continuing)."
   sudo -u "${HOST_VNC_USER}" rm -f "${VNC_DIR}"/*.pid "${VNC_DIR}"/*.log >/dev/null 2>&1 || true
   sudo -u "${HOST_VNC_USER}" rm -rf "$(dirname "${VNC_DIR}")/.cache/sessions" >/dev/null 2>&1 || true
   sudo -u "${HOST_VNC_USER}" touch "$(dirname "${VNC_DIR}")/.Xresources"
-  # TightVNC on Ubuntu 20.04 does not support TigerVNC flags like
-  # `-SecurityTypes` or `-localhost no`.
-  run_as_vnc_user vncserver "${HOST_VNC_DISPLAY}" -geometry "${HOST_VNC_GEOMETRY}" -depth "${HOST_VNC_DEPTH}"
+  if [[ "${HOST_VNC_BACKEND}" == "tightvnc" ]]; then
+    run_as_vnc_user tightvncserver "${HOST_VNC_DISPLAY}" -geometry "${HOST_VNC_GEOMETRY}" -depth "${HOST_VNC_DEPTH}"
+  elif [[ "${HOST_VNC_BACKEND}" == "tigervnc" ]]; then
+    run_as_vnc_user VNC_PORT="${HOST_VNC_PORT}" vncserver "${HOST_VNC_DISPLAY}" -geometry "${HOST_VNC_GEOMETRY}" -depth "${HOST_VNC_DEPTH}" -SecurityTypes VncAuth -localhost no
+  else
+    if ! run_as_vnc_user VNC_PORT="${HOST_VNC_PORT}" vncserver "${HOST_VNC_DISPLAY}" -geometry "${HOST_VNC_GEOMETRY}" -depth "${HOST_VNC_DEPTH}" -SecurityTypes VncAuth -localhost no; then
+      echo "TigerVNC failed, falling back to TightVNC..."
+      run_as_vnc_user tightvncserver "${HOST_VNC_DISPLAY}" -geometry "${HOST_VNC_GEOMETRY}" -depth "${HOST_VNC_DEPTH}"
+    fi
+  fi
   echo "Started VNC on display ${HOST_VNC_DISPLAY} for user ${HOST_VNC_USER}."
 }
 
@@ -148,7 +181,7 @@ status_vnc() {
   if run_as_vnc_user vncserver -help 2>&1 | grep -q -- '-list'; then
     run_as_vnc_user vncserver -list || true
   else
-    # TightVNC on some distros does not support `vncserver -list`.
+    # Some distro wrappers do not support `vncserver -list`.
     ps -u "${HOST_VNC_USER}" -f | grep -E 'Xtightvnc|Xvnc|vncserver' | grep -v grep || true
   fi
   echo "Expected listening port: ${HOST_VNC_PORT}"
