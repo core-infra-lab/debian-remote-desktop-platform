@@ -8,3 +8,4 @@ COPY start-vnc.sh /usr/local/bin/start-vnc.sh
 RUN chmod +x /usr/local/bin/start-vnc.sh
 EXPOSE 5901 6901
 CMD ["/usr/local/bin/start-vnc.sh"]
+
