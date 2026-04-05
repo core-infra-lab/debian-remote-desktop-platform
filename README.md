@@ -1,6 +1,10 @@
-# Guacamole + VNC (full Docker)
+# Guacamole + VNC (full Docker or host/VM VNC)
 
-This repo runs Apache Guacamole, guacd, Postgres, and an XFCE VNC desktop fully containerized. No GUI or VNC needs to be installed on the host.
+This repo supports two modes:
+- Full Docker: Apache Guacamole, guacd, Postgres, and XFCE VNC desktop all in containers.
+- Host/VM VNC: Guacamole in Docker, while GUI + VNC run on the host (or another VM).
+
+Default behavior remains Full Docker.
 
 ## Prerequisites
 - Docker + Docker Compose
@@ -14,6 +18,29 @@ cp .env.example .env
 docker compose up -d   # or: make up
 ```
 Then open: `http://<HOST_IP>:8081/guacamole` (default login: guacadmin / guacadmin).
+
+## Choose your mode
+
+### 1) Full Docker (default)
+```bash
+make up
+make add-connection-docker
+```
+This starts `vnc-desktop` in Docker and points Guacamole to `vnc-desktop:5901`.
+
+### 2) Host/VM VNC (legacy option)
+```bash
+make up-host
+make setup-vnc-host
+make restart-vnc-host
+make add-connection-host
+```
+This starts only `guacamole`, `guacd`, and `postgres` in Docker, then points Guacamole to `host.docker.internal:5901`.
+
+If your VNC server is not on the Docker host, override variables:
+```bash
+make add-connection-host HOST_VNC_HOST=<IP_OR_DNS> HOST_VNC_PORT=5901
+```
 
 Required secrets now come from environment variables (`.env`):
 - `POSTGRES_PASSWORD`
@@ -66,9 +93,11 @@ docker compose build vnc-desktop
 ```
 
 ## Make targets
-- make up / down / restart / status
+- make up / up-host / up-full-docker / down / restart / status
 - make connect (shows URL/ports)
 - make ssh (if you still use an SSH-accessible VM)
+- make setup-vnc-host / restart-vnc-host / status-vnc-host
+- make add-connection-docker / add-connection-host
 - make add-connection (creates or updates a Guacamole VNC connection)
 - make env (print loaded variables)
 - make clean-docker (reset + prune)
@@ -84,7 +113,7 @@ Host (radandri)                 Container (guac)
 ./data/vnc --------------------> /home/guac/.vnc
 ```
 
-Host-side VNC install targets were removed because VNC now runs in the container.
+Host-side VNC install targets are available as an optional legacy mode (`*-host` targets).
 
 ## Notes
 - If you enable the optional nginx reverse-proxy, expose 8443 and point your browser to https://\<HOST_IP\>:8443/guacamole.
