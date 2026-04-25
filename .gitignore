@@ -2,7 +2,10 @@
 .env
 .env.*
 !.env.example
+!.env.full-docker.example
+!.env.host.example
 .vscode/
+.codex
 .idea/
 *.swp
 *.swo

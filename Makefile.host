@@ -1,0 +1,162 @@
+# ================================
+# HOST / VM VNC
+# ================================
+#
+# Mode avance:
+# Guacamole, guacd et Postgres tournent dans Docker.
+# Le serveur VNC tourne sur l'hote, sur la VM, ou sur une autre machine.
+
+ifneq (,$(wildcard .env))
+	include .env
+	export $(shell sed 's/=.*//' .env)
+endif
+
+ENV_FILE = .env
+HOST_IP ?= $(shell sh -c 'ip=$$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n "s/.* src \([0-9.]*\).*/\1/p" | head -n1); if [ -z "$$ip" ]; then ip=$$(ip -4 -o addr show up scope global 2>/dev/null | sed -n "s/^[0-9]*: \([^ ]*\) *inet \([0-9.]*\)\/.*/\1 \2/p" | grep -v "^lo " | head -n1 | cut -d" " -f2); fi; if [ -n "$$ip" ]; then echo "$$ip"; else echo 127.0.0.1; fi')
+
+VM_IP ?= $(HOST_IP)
+VNC_PORT ?= 5901
+GUAC_PORT ?= 8081
+SSH_PORT ?= 4242
+VM_USER ?= radandri
+
+HOST_VNC_HOST ?= host.docker.internal
+HOST_VNC_PORT ?= 5901
+CONNECTION_NAME ?= New VNC Connection
+CONNECTION_HOST ?= $(HOST_VNC_HOST)
+CONNECTION_PORT ?= $(HOST_VNC_PORT)
+CONNECTION_PASSWORD ?= $(if $(HOST_VNC_PASSWORD),$(HOST_VNC_PASSWORD),$(VNC_PASSWORD))
+CONNECTION_PROTOCOL ?= vnc
+CONNECTION_CLIPBOARD_ENCODING ?= UTF-8
+CONNECTION_COLOR_DEPTH ?= 24
+GUAC_ADMIN_ENTITY_ID ?= 1
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo ""
+	@echo "===== Host / VM VNC ====="
+	@echo "Installation:"
+	@echo "  make -f Makefile.host install"
+	@echo "  make -f Makefile.host up"
+	@echo "  make -f Makefile.host setup-vnc-host"
+	@echo "  make -f Makefile.host restart-vnc-host"
+	@echo "  make -f Makefile.host add-connection"
+	@echo ""
+	@echo "Docker Guacamole:"
+	@echo "  make -f Makefile.host down"
+	@echo "  make -f Makefile.host restart"
+	@echo "  make -f Makefile.host status"
+	@echo ""
+	@echo "Host/VM:"
+	@echo "  make -f Makefile.host ssh"
+	@echo "  make -f Makefile.host status-vnc-host"
+	@echo "  make -f Makefile.host connect"
+	@echo "  make -f Makefile.host env"
+	@echo "========================="
+	@echo ""
+
+install: prepare up setup-vnc-host restart-vnc-host add-connection
+
+prepare:
+	bash prepare.sh
+
+up:
+	@echo "Demarrage de Guacamole sans conteneur VNC local..."
+	docker compose up -d guacd postgres guacamole
+	@echo ""
+	@echo "Guacamole : http://$(HOST_IP):$(GUAC_PORT)/guacamole"
+	@echo "Login initial : guacadmin / guacadmin"
+	@echo "VNC host/VM cible : $(HOST_VNC_HOST):$(HOST_VNC_PORT)"
+	@echo ""
+
+up-host: up
+
+down:
+	@echo "Arret et suppression des conteneurs Guacamole..."
+	docker compose down
+
+restart: down up
+
+status:
+	@echo "Conteneurs Guacamole actifs :"
+	docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
+
+ssh:
+	@echo "Connexion SSH a la VM $(VM_IP) sur le port $(SSH_PORT)..."
+	@ssh $(VM_USER)@$(VM_IP) -p $(SSH_PORT)
+
+connect:
+	@echo ""
+	@echo "================== INFORMATIONS HOST / VM =================="
+	@echo "Guacamole : http://$(HOST_IP):$(GUAC_PORT)/guacamole"
+	@echo "VM SSH : ssh $(VM_USER)@$(VM_IP) -p $(SSH_PORT)"
+	@echo "VNC host/VM : $(HOST_VNC_HOST):$(HOST_VNC_PORT)"
+	@echo "Connexion Guacamole cible : $(CONNECTION_HOST):$(CONNECTION_PORT)"
+	@echo "============================================================"
+	@echo ""
+
+setup-vnc-host:
+	@./start-vnc-host.sh setup
+
+restart-vnc-host:
+	@./start-vnc-host.sh restart
+
+status-vnc-host:
+	@./start-vnc-host.sh status
+
+add-connection: add-connection-host
+
+add-connection-host:
+	@if [ -z "$(strip $(CONNECTION_NAME))" ] || [ -z "$(strip $(CONNECTION_HOST))" ] || [ -z "$(strip $(CONNECTION_PORT))" ] || [ -z "$(strip $(CONNECTION_PASSWORD))" ]; then echo "CONNECTION_NAME, CONNECTION_HOST, CONNECTION_PORT and CONNECTION_PASSWORD must be set"; exit 1; fi
+	@echo "Creation/mise a jour de la connexion Guacamole host/VM: $(CONNECTION_NAME)"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	CONN_HOST='$(CONNECTION_HOST)'; \
+	CONN_PORT='$(CONNECTION_PORT)'; \
+	CONN_PASSWORD='$(CONNECTION_PASSWORD)'; \
+	CONN_PROTOCOL='$(CONNECTION_PROTOCOL)'; \
+	CONN_CLIPBOARD='$(CONNECTION_CLIPBOARD_ENCODING)'; \
+	CONN_DEPTH='$(CONNECTION_COLOR_DEPTH)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"WITH conn AS (INSERT INTO guacamole_connection (connection_name, protocol, parent_id) VALUES ('$$CONN_NAME', '$$CONN_PROTOCOL', NULL) ON CONFLICT (connection_name, parent_id) DO UPDATE SET protocol = EXCLUDED.protocol RETURNING connection_id) INSERT INTO guacamole_connection_parameter (connection_id, parameter_name, parameter_value) SELECT conn.connection_id, params.parameter_name, params.parameter_value FROM conn CROSS JOIN (VALUES ('hostname', '$$CONN_HOST'), ('port', '$$CONN_PORT'), ('password', '$$CONN_PASSWORD'), ('clipboard-encoding', '$$CONN_CLIPBOARD'), ('color-depth', '$$CONN_DEPTH')) AS params(parameter_name, parameter_value) ON CONFLICT (connection_id, parameter_name) DO UPDATE SET parameter_value = EXCLUDED.parameter_value;"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission) SELECT $(GUAC_ADMIN_ENTITY_ID), c.connection_id, perm::guacamole_object_permission_type FROM guacamole_connection c CROSS JOIN (VALUES ('READ'),('UPDATE'),('DELETE'),('ADMINISTER')) AS p(perm) WHERE c.connection_name = '$$CONN_NAME' ON CONFLICT DO NOTHING;"
+	@echo "Termine. Ouvre Guacamole, rafraichis la page, puis choisis '$(CONNECTION_NAME)'."
+
+env:
+	@echo "===== Variables host/VM ====="
+	@echo "HOST_IP = $(HOST_IP)"
+	@echo "VM_IP = $(VM_IP)"
+	@echo "SSH_PORT = $(SSH_PORT)"
+	@echo "GUAC_PORT = $(GUAC_PORT)"
+	@echo "HOST_VNC_HOST = $(HOST_VNC_HOST)"
+	@echo "HOST_VNC_PORT = $(HOST_VNC_PORT)"
+	@echo "CONNECTION_HOST = $(CONNECTION_HOST)"
+	@echo "CONNECTION_PORT = $(CONNECTION_PORT)"
+	@echo "============================="
+
+update-env:
+	@echo "Mise a jour du fichier $(ENV_FILE) avec HOST_IP=$(HOST_IP)"
+	@if [ -f $(ENV_FILE) ]; then \
+		sed -i "s/^HOST_IP=.*/HOST_IP=$(HOST_IP)/" $(ENV_FILE) || echo "HOST_IP=$(HOST_IP)" >> $(ENV_FILE); \
+	else \
+		echo "HOST_IP=$(HOST_IP)" > $(ENV_FILE); \
+	fi
+
+run: update-env up
+
+clean-docker:
+	@echo "Suppression des conteneurs, volumes et images orphelins..."
+	bash reset.sh
+	docker compose down -v --remove-orphans
+	docker system prune -f
+	docker stop $$(docker ps -aq) 2>/dev/null || true
+	docker rm -f $$(docker ps -aq) 2>/dev/null || true
+
+set-guac-host:
+	@echo "Mise a jour de la connexion Guacamole vers host.docker.internal..."
+	@docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c "UPDATE guacamole_connection_parameter SET parameter_value='host.docker.internal' WHERE parameter_name='hostname' AND parameter_value='127.0.0.1';" || true
+	@echo "Termine. Redemarre guacd/guacamole si besoin: make -f Makefile.host restart"
+
+.PHONY: help install prepare up up-host down restart status ssh connect setup-vnc-host restart-vnc-host status-vnc-host add-connection add-connection-host env update-env run clean-docker set-guac-host
