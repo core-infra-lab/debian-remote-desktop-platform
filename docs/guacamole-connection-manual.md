@@ -4,13 +4,18 @@ This project can create Guacamole VNC connections directly in the database so yo
 
 ## What the Make target does
 
-`make add-connection` creates or updates a VNC connection in Guacamole and grants `guacadmin` access to it.
+`make -f Makefile.full-docker add-connection` creates or updates the bundled Docker VNC connection.
+
+`make -f Makefile.host add-connection` creates or updates a host/VM VNC connection.
+
+Both grant `guacadmin` access to the connection.
 
 Defaults:
 - `CONNECTION_NAME=New VNC Connection`
 - `CONNECTION_HOST=vnc-desktop`
 - `CONNECTION_PORT=5901`
-- `CONNECTION_PASSWORD=$(VNC_PASSWORD)`
+- full Docker: `CONNECTION_PASSWORD=$(VNC_PASSWORD)`
+- host/VM: `CONNECTION_PASSWORD=$(HOST_VNC_PASSWORD)` if set, otherwise `$(VNC_PASSWORD)`
 - `CONNECTION_PROTOCOL=vnc`
 
 ## Create a local VNC connection
@@ -18,7 +23,7 @@ Defaults:
 Use this for the bundled desktop container:
 
 ```bash
-make add-connection \
+make -f Makefile.full-docker add-connection \
   CONNECTION_NAME="Desktop Docker Local" \
   CONNECTION_HOST="vnc-desktop" \
   CONNECTION_PORT="5901" \
@@ -32,7 +37,7 @@ Then refresh Guacamole and open the new connection.
 Use this when the VNC server runs on another host or VM:
 
 ```bash
-make add-connection \
+make -f Makefile.host add-connection \
   CONNECTION_NAME="VM Debian VNC" \
   CONNECTION_HOST="10.0.0.25" \
   CONNECTION_PORT="5901" \
@@ -46,7 +51,7 @@ If the remote VM is behind a firewall or security group, make sure the VNC port 
 If you want the target to store a password different from the one in `.env`, pass a different value:
 
 ```bash
-make add-connection \
+make -f Makefile.host add-connection \
   CONNECTION_NAME="EC2 VNC" \
   CONNECTION_HOST="ec2-xx-xx-xx-xx.compute.amazonaws.com" \
   CONNECTION_PORT="5901" \

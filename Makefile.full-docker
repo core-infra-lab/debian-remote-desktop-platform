@@ -1,0 +1,139 @@
+# ================================
+# FULL DOCKER
+# ================================
+#
+# Mode recommande pour une nouvelle machine:
+# Guacamole, guacd, Postgres et le bureau VNC tournent tous dans Docker.
+
+ifneq (,$(wildcard .env))
+	include .env
+	export $(shell sed 's/=.*//' .env)
+endif
+
+ENV_FILE = .env
+HOST_IP ?= $(shell sh -c 'ip=$$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n "s/.* src \([0-9.]*\).*/\1/p" | head -n1); if [ -z "$$ip" ]; then ip=$$(ip -4 -o addr show up scope global 2>/dev/null | sed -n "s/^[0-9]*: \([^ ]*\) *inet \([0-9.]*\)\/.*/\1 \2/p" | grep -v "^lo " | head -n1 | cut -d" " -f2); fi; if [ -n "$$ip" ]; then echo "$$ip"; else echo 127.0.0.1; fi')
+
+VNC_PORT ?= 5901
+GUAC_PORT ?= 8081
+
+CONNECTION_NAME ?= New VNC Connection
+CONNECTION_HOST ?= vnc-desktop
+CONNECTION_PORT ?= $(VNC_PORT)
+CONNECTION_PASSWORD ?= $(VNC_PASSWORD)
+CONNECTION_PROTOCOL ?= vnc
+CONNECTION_CLIPBOARD_ENCODING ?= UTF-8
+CONNECTION_COLOR_DEPTH ?= 24
+GUAC_ADMIN_ENTITY_ID ?= 1
+
+.DEFAULT_GOAL := help
+
+help:
+	@echo ""
+	@echo "===== Full Docker ====="
+	@echo "Installation:"
+	@echo "  make -f Makefile.full-docker install"
+	@echo "  make -f Makefile.full-docker up"
+	@echo "  make -f Makefile.full-docker add-connection"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make -f Makefile.full-docker down"
+	@echo "  make -f Makefile.full-docker restart"
+	@echo "  make -f Makefile.full-docker status"
+	@echo "  make -f Makefile.full-docker re"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  make -f Makefile.full-docker connect"
+	@echo "  make -f Makefile.full-docker env"
+	@echo "  make -f Makefile.full-docker clean-docker"
+	@echo "======================="
+	@echo ""
+
+install: prepare up add-connection
+
+install-guacamole: install
+
+prepare:
+	bash prepare.sh
+
+up:
+	@echo "Demarrage du mode full Docker..."
+	docker compose up -d
+	@echo ""
+	@echo "Guacamole : http://$(HOST_IP):$(GUAC_PORT)/guacamole"
+	@echo "Login initial : guacadmin / guacadmin"
+	@echo "VNC Docker : vnc-desktop:$(VNC_PORT)"
+	@echo ""
+
+up-full-docker: up
+
+re:
+	docker compose build vnc-desktop
+	docker compose up -d --force-recreate vnc-desktop
+
+down:
+	@echo "Arret et suppression des conteneurs..."
+	docker compose down
+
+restart: down up
+
+status:
+	@echo "Conteneurs actifs :"
+	docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
+
+connect:
+	@echo ""
+	@echo "================== INFORMATIONS FULL DOCKER =================="
+	@echo "Guacamole : http://$(HOST_IP):$(GUAC_PORT)/guacamole"
+	@echo "VNC Docker : $(HOST_IP):$(VNC_PORT)"
+	@echo "Connexion Guacamole cible : $(CONNECTION_HOST):$(CONNECTION_PORT)"
+	@echo "=============================================================="
+	@echo ""
+
+add-connection: add-connection-docker
+
+add-connection-docker:
+	@if [ -z "$(strip $(CONNECTION_NAME))" ] || [ -z "$(strip $(CONNECTION_HOST))" ] || [ -z "$(strip $(CONNECTION_PORT))" ] || [ -z "$(strip $(CONNECTION_PASSWORD))" ]; then echo "CONNECTION_NAME, CONNECTION_HOST, CONNECTION_PORT and CONNECTION_PASSWORD must be set"; exit 1; fi
+	@echo "Creation/mise a jour de la connexion Guacamole full Docker: $(CONNECTION_NAME)"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	CONN_HOST='$(CONNECTION_HOST)'; \
+	CONN_PORT='$(CONNECTION_PORT)'; \
+	CONN_PASSWORD='$(CONNECTION_PASSWORD)'; \
+	CONN_PROTOCOL='$(CONNECTION_PROTOCOL)'; \
+	CONN_CLIPBOARD='$(CONNECTION_CLIPBOARD_ENCODING)'; \
+	CONN_DEPTH='$(CONNECTION_COLOR_DEPTH)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"WITH conn AS (INSERT INTO guacamole_connection (connection_name, protocol, parent_id) VALUES ('$$CONN_NAME', '$$CONN_PROTOCOL', NULL) ON CONFLICT (connection_name, parent_id) DO UPDATE SET protocol = EXCLUDED.protocol RETURNING connection_id) INSERT INTO guacamole_connection_parameter (connection_id, parameter_name, parameter_value) SELECT conn.connection_id, params.parameter_name, params.parameter_value FROM conn CROSS JOIN (VALUES ('hostname', '$$CONN_HOST'), ('port', '$$CONN_PORT'), ('password', '$$CONN_PASSWORD'), ('clipboard-encoding', '$$CONN_CLIPBOARD'), ('color-depth', '$$CONN_DEPTH')) AS params(parameter_name, parameter_value) ON CONFLICT (connection_id, parameter_name) DO UPDATE SET parameter_value = EXCLUDED.parameter_value;"
+	@CONN_NAME='$(CONNECTION_NAME)'; \
+	docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c \
+	"INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission) SELECT $(GUAC_ADMIN_ENTITY_ID), c.connection_id, perm::guacamole_object_permission_type FROM guacamole_connection c CROSS JOIN (VALUES ('READ'),('UPDATE'),('DELETE'),('ADMINISTER')) AS p(perm) WHERE c.connection_name = '$$CONN_NAME' ON CONFLICT DO NOTHING;"
+	@echo "Termine. Ouvre Guacamole, rafraichis la page, puis choisis '$(CONNECTION_NAME)'."
+
+env:
+	@echo "===== Variables full Docker ====="
+	@echo "HOST_IP = $(HOST_IP)"
+	@echo "VNC_PORT = $(VNC_PORT)"
+	@echo "GUAC_PORT = $(GUAC_PORT)"
+	@echo "CONNECTION_HOST = $(CONNECTION_HOST)"
+	@echo "CONNECTION_PORT = $(CONNECTION_PORT)"
+	@echo "================================="
+
+update-env:
+	@echo "Mise a jour du fichier $(ENV_FILE) avec HOST_IP=$(HOST_IP)"
+	@if [ -f $(ENV_FILE) ]; then \
+		sed -i "s/^HOST_IP=.*/HOST_IP=$(HOST_IP)/" $(ENV_FILE) || echo "HOST_IP=$(HOST_IP)" >> $(ENV_FILE); \
+	else \
+		echo "HOST_IP=$(HOST_IP)" > $(ENV_FILE); \
+	fi
+
+run: update-env
+	docker compose --env-file $(ENV_FILE) up -d
+
+clean-docker:
+	@echo "Suppression des conteneurs, volumes et images orphelins..."
+	bash reset.sh
+	docker compose down -v --remove-orphans
+	docker system prune -f
+	docker stop $$(docker ps -aq) 2>/dev/null || true
+	docker rm -f $$(docker ps -aq) 2>/dev/null || true
+
+.PHONY: help install install-guacamole prepare up up-full-docker re down restart status connect add-connection add-connection-docker env update-env run clean-docker
