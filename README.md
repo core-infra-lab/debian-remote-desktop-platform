@@ -63,7 +63,6 @@ make -f Makefile.host setup-vnc-host
 make -f Makefile.host restart-vnc-host
 make -f Makefile.host status-vnc-host
 make -f Makefile.host add-connection
-make -f Makefile.host install-vnc-autostart-host
 ```
 
 Ce que font ces commandes:
@@ -73,31 +72,6 @@ Ce que font ces commandes:
 - `setup-vnc-host`: installe/configure XFCE + VNC sur la VM.
 - `restart-vnc-host`: demarre le serveur VNC sur la VM.
 - `add-connection`: ajoute dans Guacamole une connexion vers `host.docker.internal:5901`.
-- `install-vnc-autostart-host`: installe un service systemd `vnc-autostart.service` pour redemarrer VNC au boot.
-
-La commande globale `make install-host` execute aussi cette etape a la fin de l'installation.
-
-## Demarrage automatique VNC
-
-Le demarrage automatique utilise systemd plutot qu'un cron `@reboot`. C'est plus adapte pour un service de VM: on peut l'activer, l'arreter, le consulter avec `systemctl`, et recuperer ses logs avec `journalctl`.
-
-Installer ou mettre a jour le service:
-
-```bash
-make install-vnc-autostart-host
-```
-
-Verifier son etat:
-
-```bash
-systemctl status vnc-autostart.service
-```
-
-Le desinstaller:
-
-```bash
-make uninstall-vnc-autostart-host
-```
 
 ## Acces depuis Windows/WSL avec VirtualBox NAT
 
