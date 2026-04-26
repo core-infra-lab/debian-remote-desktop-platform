@@ -20,6 +20,7 @@ install-host:
 	@$(MAKE) -f $(HOST_MAKEFILE) restart-vnc-host
 	@$(MAKE) -f $(HOST_MAKEFILE) add-connection
 	@$(MAKE) post-install
+	@$(MAKE) -f $(HOST_MAKEFILE) install-vnc-autostart-host
 
 install-full-docker:
 	if [ ! -f .env ]; then \
@@ -33,4 +34,10 @@ install-full-docker:
 post-install:
 	./post_install.sh $(POST_INSTALL_USER)
 
-.PHONY: install-host install-full-docker post-install
+install-vnc-autostart-host:
+	@$(MAKE) -f $(HOST_MAKEFILE) install-vnc-autostart-host
+
+uninstall-vnc-autostart-host:
+	@$(MAKE) -f $(HOST_MAKEFILE) uninstall-vnc-autostart-host
+
+.PHONY: install-host install-full-docker post-install install-vnc-autostart-host uninstall-vnc-autostart-host

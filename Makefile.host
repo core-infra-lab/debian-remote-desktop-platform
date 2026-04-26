@@ -13,12 +13,16 @@ endif
 
 ENV_FILE = .env
 HOST_IP ?= $(shell sh -c 'ip=$$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n "s/.* src \([0-9.]*\).*/\1/p" | head -n1); if [ -z "$$ip" ]; then ip=$$(ip -4 -o addr show up scope global 2>/dev/null | sed -n "s/^[0-9]*: \([^ ]*\) *inet \([0-9.]*\)\/.*/\1 \2/p" | grep -v "^lo " | head -n1 | cut -d" " -f2); fi; if [ -n "$$ip" ]; then echo "$$ip"; else echo 127.0.0.1; fi')
+MAKE_BIN ?= $(shell command -v make 2>/dev/null || echo /usr/bin/make)
+SYSTEMD_SYSTEM_DIR ?= /etc/systemd/system
+VNC_AUTOSTART_SERVICE ?= vnc-autostart.service
 
 VM_IP ?= $(HOST_IP)
 VNC_PORT ?= 5901
 GUAC_PORT ?= 8081
 SSH_PORT ?= 4242
 VM_USER ?= radandri
+HOST_VNC_USER ?= $(VM_USER)
 
 HOST_VNC_HOST ?= host.docker.internal
 HOST_VNC_PORT ?= 5901
@@ -31,7 +35,7 @@ CONNECTION_CLIPBOARD_ENCODING ?= UTF-8
 CONNECTION_COLOR_DEPTH ?= 24
 GUAC_ADMIN_ENTITY_ID ?= 1
 
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := install
 
 help:
 	@echo ""
@@ -41,6 +45,7 @@ help:
 	@echo "  make -f Makefile.host up"
 	@echo "  make -f Makefile.host setup-vnc-host"
 	@echo "  make -f Makefile.host restart-vnc-host"
+	@echo "  make -f Makefile.host install-vnc-autostart-host"
 	@echo "  make -f Makefile.host add-connection"
 	@echo ""
 	@echo "Docker Guacamole:"
@@ -56,7 +61,7 @@ help:
 	@echo "========================="
 	@echo ""
 
-install: prepare up setup-vnc-host restart-vnc-host add-connection
+install: prepare up setup-vnc-host restart-vnc-host add-connection install-vnc-autostart-host
 
 prepare:
 	bash prepare.sh
@@ -102,8 +107,43 @@ setup-vnc-host:
 restart-vnc-host:
 	@./start-vnc-host.sh restart
 
+stop-vnc-host:
+	@./start-vnc-host.sh stop
+
 status-vnc-host:
 	@./start-vnc-host.sh status
+
+install-vnc-autostart-host:
+	@echo "Installation du service systemd $(VNC_AUTOSTART_SERVICE)..."
+	@tmp_file="$$(mktemp)"; \
+	{ \
+		printf '%s\n' '[Unit]'; \
+		printf '%s\n' 'Description=Auto-start host VNC server for $(HOST_VNC_USER)'; \
+		printf '%s\n' 'Wants=network-online.target docker.service'; \
+		printf '%s\n' 'After=network-online.target docker.service'; \
+		printf '%s\n' ''; \
+		printf '%s\n' '[Service]'; \
+		printf '%s\n' 'Type=oneshot'; \
+		printf '%s\n' 'RemainAfterExit=yes'; \
+		printf '%s\n' 'WorkingDirectory=$(CURDIR)'; \
+		printf '%s\n' 'ExecStart=$(MAKE_BIN) -C $(CURDIR) -f Makefile.host restart-vnc-host'; \
+		printf '%s\n' 'ExecStop=$(MAKE_BIN) -C $(CURDIR) -f Makefile.host stop-vnc-host'; \
+		printf '%s\n' ''; \
+		printf '%s\n' '[Install]'; \
+		printf '%s\n' 'WantedBy=multi-user.target'; \
+	} > "$$tmp_file"; \
+	sudo install -m 0644 "$$tmp_file" "$(SYSTEMD_SYSTEM_DIR)/$(VNC_AUTOSTART_SERVICE)"; \
+	rm -f "$$tmp_file"; \
+	sudo systemctl daemon-reload; \
+	sudo systemctl enable "$(VNC_AUTOSTART_SERVICE)"; \
+	sudo systemctl restart "$(VNC_AUTOSTART_SERVICE)"; \
+	sudo systemctl status --no-pager "$(VNC_AUTOSTART_SERVICE)" || true
+
+uninstall-vnc-autostart-host:
+	@echo "Suppression du service systemd $(VNC_AUTOSTART_SERVICE)..."
+	@sudo systemctl disable --now "$(VNC_AUTOSTART_SERVICE)" 2>/dev/null || true
+	@sudo rm -f "$(SYSTEMD_SYSTEM_DIR)/$(VNC_AUTOSTART_SERVICE)"
+	@sudo systemctl daemon-reload
 
 add-connection: add-connection-host
 
@@ -159,4 +199,4 @@ set-guac-host:
 	@docker exec -i postgres_guacamole_compose psql -U guacamole_user -d guacamole_db -c "UPDATE guacamole_connection_parameter SET parameter_value='host.docker.internal' WHERE parameter_name='hostname' AND parameter_value='127.0.0.1';" || true
 	@echo "Termine. Redemarre guacd/guacamole si besoin: make -f Makefile.host restart"
 
-.PHONY: help install prepare up up-host down restart status ssh connect setup-vnc-host restart-vnc-host status-vnc-host add-connection add-connection-host env update-env run clean-docker set-guac-host
+.PHONY: help install prepare up up-host down restart status ssh connect setup-vnc-host restart-vnc-host stop-vnc-host status-vnc-host install-vnc-autostart-host uninstall-vnc-autostart-host add-connection add-connection-host env update-env run clean-docker set-guac-host
