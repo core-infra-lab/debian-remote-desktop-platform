@@ -19,7 +19,6 @@ install-host:
 	@$(MAKE) -f $(HOST_MAKEFILE) setup-vnc-host
 	@$(MAKE) -f $(HOST_MAKEFILE) restart-vnc-host
 	@$(MAKE) -f $(HOST_MAKEFILE) add-connection
-	@$(MAKE) post-install
 
 install-full-docker:
 	if [ ! -f .env ]; then \
@@ -29,8 +28,5 @@ install-full-docker:
 	@$(MAKE) -f $(FULL_DOCKER_MAKEFILE) up
 	@$(MAKE) -f $(FULL_DOCKER_MAKEFILE) add-connection
 	@$(MAKE) post-install
-
-post-install:
-	./post_install.sh $(POST_INSTALL_USER)
 
 .PHONY: install-host install-full-docker post-install
