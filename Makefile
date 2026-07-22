@@ -11,7 +11,7 @@ HOST_MAKEFILE := Makefile.host
 POST_INSTALL_USER ?= radandri
 
 install-host:
-	if [ ! -f .env ]; then \
+	if [ ! -f $(pwd)/.env ]; then \
 		cp .env.host.example .env; \
 	fi
 	@$(MAKE) -f $(HOST_MAKEFILE) prepare
@@ -21,7 +21,7 @@ install-host:
 	@$(MAKE) -f $(HOST_MAKEFILE) add-connection
 
 install-full-docker:
-	if [ ! -f .env ]; then \
+	if [ ! -f $(pwd)/.env ]; then \
 		cp .env.full-docker.example .env; \
 	fi
 	@$(MAKE) -f $(FULL_DOCKER_MAKEFILE) prepare
