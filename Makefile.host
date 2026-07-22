@@ -138,7 +138,7 @@ env:
 
 update-env:
 	@echo "Mise a jour du fichier $(ENV_FILE) avec HOST_IP=$(HOST_IP)"
-	@if [ -f $(ENV_FILE) ]; then \
+	@if [ -f $(pwd)/$(ENV_FILE) ]; then \
 		sed -i "s/^HOST_IP=.*/HOST_IP=$(HOST_IP)/" $(ENV_FILE) || echo "HOST_IP=$(HOST_IP)" >> $(ENV_FILE); \
 	else \
 		echo "HOST_IP=$(HOST_IP)" > $(ENV_FILE); \
