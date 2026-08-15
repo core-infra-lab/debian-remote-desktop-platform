@@ -20,9 +20,23 @@ install-host:
 	@$(MAKE) -C "$(ROOT_DIR)" -f $(HOST_MAKEFILE) setup-vnc-host
 	@$(MAKE) -C "$(ROOT_DIR)" -f $(HOST_MAKEFILE) restart-vnc-host
 	@$(MAKE) -C "$(ROOT_DIR)" -f $(HOST_MAKEFILE) add-connection
+	@if ! grep -q "^alias vnc=" ~/.zshrc; then \
+		@echo "alias vnc='make -f $(ROOT_DIR)/Makefile restart-vnc'" >> ~/.zshrc
+	fi
+	@if ! grep -q "^alias vnc=" ~/.bashrc; then \
+		@echo "alias vnc='make -f $(ROOT_DIR)/Makefile restart-vnc'" >> ~/.bashrc
+	fi
+	@if ! grep -q "^alias install-guac=" ~/.zshrc; then \
+		@echo "alias install-guac='make -f $(ROOT_DIR)/Makefile install-host'" >> ~/.zshrc
+	fi
+	@if ! grep -q "^alias install-guac=" ~/.bashrc; then \
+		@echo "alias install-guac='make -f $(ROOT_DIR)/Makefile install-host'" >> ~/.bashrc
+	fi
+	@cd
 
 restart-vnc:
 	@$(MAKE) -C "$(ROOT_DIR)" -f $(HOST_MAKEFILE) restart-vnc-host
+	@cd
 
 install-full-docker:
 	if [ ! -f "$(ROOT_DIR)/.env" ]; then \
